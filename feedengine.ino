@@ -141,10 +141,14 @@ class MyRxCallbacks : public NimBLECharacteristicCallbacks {
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("Iniciando BLE con perfil Nordic UART...");
+    Serial.println("\n--- Iniciando Dispensador ---");
 
-    // Nombre más corto para que quepa en el paquete de 31 bytes
-    NimBLEDevice::init("Dispensador");
+    // 1. Leer preferencias e intentar conexión Wi-Fi (si procede)
+    read_from_store();
+
+    // 2. Configurar el subsistema BLE
+    Serial.println("Iniciando BLE con perfil Nordic UART...");
+    NimBLEDevice::init("Hrs-Dsp");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
 
     pServer = NimBLEDevice::createServer();
@@ -152,13 +156,11 @@ void setup() {
 
     NimBLEService* pService = pServer->createService(SERVICE_UUID);
 
-    // Característica de Transmisión (TX) - Notifica al móvil
     pTxCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_TX,
         NIMBLE_PROPERTY::NOTIFY
     );
 
-    // Característica de Recepción (RX) - Recibe del móvil
     pRxCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID_RX,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
@@ -167,13 +169,12 @@ void setup() {
 
     pService->start();
 
-    // Configuración de anuncios forzando el nombre
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SERVICE_UUID);
     pAdvertising->setName("Hrs-Dsp"); 
     pAdvertising->start();
 
-    Serial.println("Esperando conexión...");
+    Serial.println("BLE listo y esperando conexión...");
 }
 
 void loop() {
