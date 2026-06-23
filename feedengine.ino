@@ -11,16 +11,21 @@ NimBLECharacteristic* pTxCharacteristic = nullptr;
 NimBLECharacteristic* pRxCharacteristic = nullptr;
 
 bool deviceConnected = false;
-bool sendInitialPrompt = false; // Bandera para enviar el "Q?" solo al conectar
+bool sendInitialPrompt = false;
 
-// --------------------------------------------------------
-// CALLBACKS BLE
-// --------------------------------------------------------
+// 📢 FUNCIÓN GLOBAL DE EVENTOS BLE
+// Puede ser llamada desde cualquier parte del proyecto (.ino o .cpp)
+void send_ble_message(String msg) {
+    if (deviceConnected && pTxCharacteristic != nullptr) {
+        pTxCharacteristic->setValue(msg.c_str());
+        pTxCharacteristic->notify();
+    }
+}
 
 class MyServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
         deviceConnected = true;
-        sendInitialPrompt = true; // Activamos el prompt único de bienvenida
+        sendInitialPrompt = true; 
         Serial.println("¡Dispositivo móvil conectado!");
     }
 
@@ -38,34 +43,25 @@ class MyRxCallbacks : public NimBLECharacteristicCallbacks {
 
         if (rxValue.length() > 0) {
             String received = String(rxValue.c_str());
-            Serial.println("Comando recibido vía BLE: " + received);
+            Serial.println("Comando recibido: " + received);
 
             if (received.length() > 128) {
                 received = received.substring(0, 128);
             }
 
-            // 1. Procesamos el comando a través del intérprete
             String cmdResponse = process_command(received);
-
-            // 2. Concatenamos el prompt "Q?" al final de la respuesta.
-            // Esto garantiza que viajen juntos en orden y evita la condición de carrera.
             cmdResponse += "\nQ?";
 
-            // 3. Enviamos el bloque completo de datos
-            pTxCharacteristic->setValue(cmdResponse.c_str());
-            pTxCharacteristic->notify();
+            send_ble_message(cmdResponse);
         }
     }
 };
-
-// --------------------------------------------------------
-// SETUP & LOOP
-// --------------------------------------------------------
 
 void setup() {
     Serial.begin(115200);
     Serial.println("\n--- Iniciando Dispensador ---");
 
+    // Inicia lectura e intento de conexión inicial (si aplica)
     read_from_store();
 
     Serial.println("Iniciando BLE con perfil Nordic UART...");
@@ -99,15 +95,13 @@ void setup() {
 }
 
 void loop() {
-    // El loop solo interviene una vez por conexión para dar la bienvenida
+    // 1. Atendemos de forma continua y no bloqueante los eventos del Wi-Fi
+    handle_wifi_async();
+
+    // 2. Control del prompt de bienvenida único
     if (deviceConnected && sendInitialPrompt) {
         sendInitialPrompt = false;
-        
-        delay(500); // Pequeña pausa para que el móvil termine de abrir sus canales internos
-        Serial.println("Enviando prompt inicial: Q?");
-        pTxCharacteristic->setValue("Q?");
-        pTxCharacteristic->notify(); 
+        delay(500);
+        send_ble_message("Q?"); 
     }
-    
-    // El loop queda completamente libre de manera no bloqueante para el motor en el futuro
 }

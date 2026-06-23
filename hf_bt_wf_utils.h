@@ -14,5 +14,6 @@ extern Preferences preferences;
 void wf_connect();
 void read_from_store();
 void write_to_store(String wssid, String wpass);
+void handle_wifi_async(); // <-- Nueva función de monitoreo asíncrono
 
 #endif
