@@ -1,6 +1,6 @@
 #include <NimBLEDevice.h>
 #include "hf_bt_wf_utils.h"
-#include "hf_cmd_interpreter.h" // <-- Incluimos la nueva librería de comandos
+#include "hf_cmd_interpreter.h"
 
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -9,19 +9,24 @@
 NimBLEServer* pServer = nullptr;
 NimBLECharacteristic* pTxCharacteristic = nullptr;
 NimBLECharacteristic* pRxCharacteristic = nullptr;
+
 bool deviceConnected = false;
-bool txReady = false;
+bool sendInitialPrompt = false; // Bandera para enviar el "Q?" solo al conectar
+
+// --------------------------------------------------------
+// CALLBACKS BLE
+// --------------------------------------------------------
 
 class MyServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
         deviceConnected = true;
-        txReady = true; 
+        sendInitialPrompt = true; // Activamos el prompt único de bienvenida
         Serial.println("¡Dispositivo móvil conectado!");
     }
 
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
         deviceConnected = false;
-        txReady = false;
+        sendInitialPrompt = false;
         Serial.println("Dispositivo móvil desconectado. Reiniciando anuncios...");
         NimBLEDevice::startAdvertising();
     }
@@ -39,19 +44,23 @@ class MyRxCallbacks : public NimBLECharacteristicCallbacks {
                 received = received.substring(0, 128);
             }
 
-            // --- PROCESAMIENTO DE COMANDOS ---
-            // Pasamos el texto al intérprete y obtenemos la respuesta formateada
+            // 1. Procesamos el comando a través del intérprete
             String cmdResponse = process_command(received);
 
-            // Enviamos la respuesta real del comando al terminal móvil
+            // 2. Concatenamos el prompt "Q?" al final de la respuesta.
+            // Esto garantiza que viajen juntos en orden y evita la condición de carrera.
+            cmdResponse += "\nQ?";
+
+            // 3. Enviamos el bloque completo de datos
             pTxCharacteristic->setValue(cmdResponse.c_str());
             pTxCharacteristic->notify();
-            
-            delay(150); // Margen de tiempo ligeramente mayor para respuestas largas (ej: help)
-            txReady = true; // Volver a habilitar el ciclo "Q?"
         }
     }
 };
+
+// --------------------------------------------------------
+// SETUP & LOOP
+// --------------------------------------------------------
 
 void setup() {
     Serial.begin(115200);
@@ -90,11 +99,15 @@ void setup() {
 }
 
 void loop() {
-    if (deviceConnected && txReady) {
-        txReady = false; 
+    // El loop solo interviene una vez por conexión para dar la bienvenida
+    if (deviceConnected && sendInitialPrompt) {
+        sendInitialPrompt = false;
         
-        Serial.println("Enviando: Q?");
+        delay(500); // Pequeña pausa para que el móvil termine de abrir sus canales internos
+        Serial.println("Enviando prompt inicial: Q?");
         pTxCharacteristic->setValue("Q?");
         pTxCharacteristic->notify(); 
     }
+    
+    // El loop queda completamente libre de manera no bloqueante para el motor en el futuro
 }
